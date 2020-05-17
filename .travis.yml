@@ -36,7 +36,7 @@ jobs:
           - sudo vagrant box add "centos/7" --provider=libvirt
           - vagrant box list #veridy installed boxes
           - vagrant status #Check the status of the VMs to see that none of them have been created yet
-          - sudo vagrant up --provider=libvirt
+          # - sudo vagrant up --provider=libvirt
           # - sudo vagrant up --provider=libvirt k8s-head
           - sudo vagrant status
           - sudo vagrant global-status
