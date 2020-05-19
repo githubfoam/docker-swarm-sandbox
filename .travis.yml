@@ -68,6 +68,7 @@ fleet_script_vagrant_tasks : &fleet_script_vagrant_tasks
           - echo "============================================="
           - sudo vagrant plugin install vagrant-libvirt #The vagrant-libvirt plugin is required when using KVM on Linux
           - sudo vagrant plugin install vagrant-mutate #Convert vagrant boxes to work with different providers
+          - sudo vagrant plugin install vagrant-hostmanager #Convert vagrant boxes to work with different providers          
           - sudo vagrant status
           - sudo virsh list --all #show all running KVM/libvirt VMs
           - sudo vagrant box add "bento/centos-7.7" --provider=virtualbox
