@@ -5,9 +5,11 @@ end
 
 task :bootstrap do
   puts "================================================================================="
-  system!("vagrant destroy -f")
   puts "================================================================================="
+  system!("vagrant plugin install vagrant-libvirt")
+  system!("vagrant plugin install vagrant-libvirt")  
   system!("vagrant up")
+  system!("vagrant destroy -f")
   puts "=================================================================================="
-  #system!("vagrant destroy -f")
+  puts "================================================================================="
 end
