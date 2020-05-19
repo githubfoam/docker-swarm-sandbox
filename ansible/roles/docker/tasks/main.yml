@@ -1,30 +1,20 @@
-- name: ensure yum-utils is at the latest version
-  yum: name=yum-utils state=latest
-  tags: [docker]
+- name: Check existence of docker
+  stat: path={{ docker_service }}
+  register: install_result
 
-- name: ensure old docker package is removed
-  yum: pkg=docker,docker-common,container-selinux,docker-selinux,docker-engine state=removed
-  tags: [docker]
+- name: Install docker 1.12
+  shell: >
+    curl -fsSL https://get.docker.com/ | sh
+  when: not install_result.stat.exists
 
-- name: docker-ce repo
-  get_url:
-    url:  https://download.docker.com/linux/centos/docker-ce.repo
-    dest: /etc/yum.repos.d/docker-ce.repo
-  tags: [docker]
+- name: Start docker service
+  service: name=docker state=started enabled=true
 
-- name: yum cleanup
-  command: yum-complete-transaction --cleanup-only
-  tags: [docker]
+- name: Check the docker status
+  no_log: true
+  shell: >
+    echo -e "GET /info HTTP/1.0\r\n" | nc -U /var/run/docker.sock | sed -n -e "/^{/p" | python -m json.tool
+  register: docker_result
 
-- name: ensure docker-ce is installed 
-  yum: name=docker-ce state=present update_cache=yes 
-  tags: [docker]
-
-- name: ensure docker is started and enabled
-  service: name=docker state=started enabled=yes
-  tags: [docker]
- 
-- name: vagrant user in  docker group
-  user: name=vagrant groups='docker' append=yes
-  tags: [docker]
-
+- set_fact:
+    docker_info: "{{ docker_result.stdout | from_json }}"

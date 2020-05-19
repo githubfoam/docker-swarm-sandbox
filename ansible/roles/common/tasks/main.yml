@@ -1,13 +1,24 @@
-#- name: Ansible is installed
-#  yum: name=ansible
-- name: timezone is Asia/Seoul
-  timezone:
-        name: Asia/Seoul
-  tags: [common]
-- name: /etc/hosts is configured
-  lineinfile:
-    dest: /etc/hosts
-    regexp: "^{{ item.host_ip }}"
-    line: "{{ item.host_ip }} {{ item.host_name }}"
-  with_items: "{{ etc_hosts }}"
-  tags: [common]
+---
+- name: Install epel
+  yum: name=epel-release state=latest
+
+- name: Install required packages
+  yum: name={{ item }} state=latest
+  with_items:
+    - nc
+    - nmap
+    - htop
+    - sysstat
+    - python-pip
+    - bind-utils
+    - jq # Json formatting
+  tags:
+    - packages
+
+- name: install docker python dependencies
+  pip: name={{ item.name }} version={{ item.version | default(omit) }}
+  with_items:
+    - { name: pyyaml }
+    - { name: docker-py, version: 1.9.0 }
+  tags:
+    - packages

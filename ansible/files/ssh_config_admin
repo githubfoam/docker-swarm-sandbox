@@ -1,6 +1,0 @@
-Host manager1
-IdentityFile /vagrant/.vagrant/machines/manager1/virtualbox/private_key
-Host manager2
-IdentityFile /vagrant/.vagrant/machines/manager2/virtualbox/private_key
-Host worker
-IdentityFile /vagrant/.vagrant/machines/worker/virtualbox/private_key
