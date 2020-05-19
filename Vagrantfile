@@ -1,121 +1,96 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# Vagrant 1.7+ automatically inserts a different
-# insecure keypair for each new VM created. The easiest way
-# to use the same keypair for all the workers is to disable
-# this feature and rely on the legacy insecure key.
-# config.ssh.insert_key = false
-#
-# Note:
-# As of Vagrant 1.7.3, it is no longer necessary to disable
-# the keypair creation when using the auto-generated inventory.
+require 'yaml'
 
-# Requires vagrant-host-shell
-required_plugins = %w( vagrant-host-shell )
-required_plugins.each do |plugin|
-  system "vagrant plugin install #{plugin}" unless Vagrant.has_plugin? plugin
-end
+# current_dir = File.dirname(File.expand_path(__FILE__))
+# local_config = YAML.load_file("#{current_dir}/vagrant.yml")
 
-VAGRANTFILE_API_VERSION = "2"
-MANAGERS = 3
-WORKERS = 3
-ANSIBLE_GROUPS = {
-  "managers" => ["manager[1:#{MANAGERS}]"],
-  "workers" => ["worker[1:#{WORKERS}]"],
-  "elk" => ["manager[2:2]"],
-  "influxdb" => ["manager[3:3]"],
-  "all_groups:children" => [
-    "managers",
-    "workers",
-    "elk",
-    "influxdb"]
-}
 
-Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+# *** CONFIG begin
 
-  config.vm.box = "bento/centos-7.7"
+# Number of Docker Swarm nodes
+# nb_swarm_nodes = local_config["nb_swarm_nodes"]
+nb_swarm_nodes = 3
 
-  config.vm.provider 'virtualbox' do |v|
-    v.linked_clone = true if Vagrant::VERSION =~ /^1.8/
-  end
+# Number of Docker Swarm managers
+nb_swarm_managers = [nb_swarm_nodes, 3].min
 
-  config.ssh.insert_key = false
+# Subnet to use for the VMs
+# Each machine's eth1 interface will be connected to this subnet
+# subnet = local_config["subnet"]
+subnet = "192.168.78"
 
-  (1..MANAGERS).each do |manager_id|
-    config.vm.define "manager#{manager_id}" do |manager|
-      manager.vm.hostname = "manager#{manager_id}"
-      manager.vm.network "private_network", ip: "192.168.77.#{20+manager_id}"
-      manager.vm.provider "virtualbox" do |v|
-        #v.memory = 512
-        v.memory = 4096
-        v.cpus = 2
-      end
-    end
-  end
+# Hostname suffix
+host_suffix = "vagrant-"
 
-  (1..WORKERS).each do |worker_id|
-    config.vm.define "worker#{worker_id}" do |worker|
-      worker.vm.hostname = "worker#{worker_id}"
-      worker.vm.network "private_network", ip: "192.168.77.#{30+worker_id}"
-      worker.vm.provider "virtualbox" do |v|
-        #v.memory = 1024
-        v.memory = 2048
-        v.cpus = 2
+# *** CONFIG end
+
+
+
+Vagrant.configure("2") do |config|
+  # ** Global config for all machines:
+  # Use debian 9
+  config.vm.box = "debian/stretch64"
+
+  # Disable default rsync of current host directory
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+
+  # ** Define "#{host_suffix}X" machines
+  (1..nb_swarm_nodes).each do |node_nb|
+    config.vm.define "#{host_suffix}#{node_nb}" do |machine|
+      machine.vm.hostname = "#{host_suffix}#{node_nb}"
+      machine.vm.network "private_network", ip: "#{subnet}.#{10+node_nb}"
+
+      machine.vm.provider "virtualbox" do |vb|
+        vb.gui = false
+        # vb.memory = local_config["memory_per_node"]
+        vb.memory = 4096
+        # vb.cpus = local_config["cpus_per_node"]
+        vb.cpus = 2
       end
 
-      # Only execute once the Ansible provisioner,
-      # when all the workers are up and ready.
-      if worker_id == WORKERS
+      # Ansible provisioning
+      # Execute Ansible provisioner only when all machines are defined
+      #  ie only for the last VM
+      if node_nb == nb_swarm_nodes
+        machine.vm.provision :ansible do |ansible|
+          # ansible.playbook = "../ansible/provision.yml"
+          ansible.playbook = "ansible/provision.yml"
+          ansible.compatibility_mode = "2.0"
+          ansible.raw_arguments = ["-D", "--skip-tags=etc_hosts"] # we can't update host's /etc/hosts because we need SUDO pwd
 
-        # Install any ansible galaxy roles
-        worker.vm.provision "shell", type: "host_shell" do |sh|
-          sh.inline =  "cd ansible && ansible-galaxy install -r requirements.yml -p roles --ignore-errors"
-        end
-
-        worker.vm.provision "swarm", type: "ansible" do |ansible|
+          # Disable default limit to connect to all the machines
           ansible.limit = "all"
-          ansible.playbook = "ansible/swarm.yml"
-          # ansible.verbose = "vv"
-          ansible.groups = ANSIBLE_GROUPS
+
+          # Build the dockerswarm_worker Ansible group, ie nodes that are not managers
+          if nb_swarm_managers < nb_swarm_nodes
+            ansible_dockerswarm_worker_group = ["#{host_suffix}[#{nb_swarm_managers+1}:#{nb_swarm_nodes}]"]
+          else
+            ansible_dockerswarm_worker_group = []
+          end
+
+          # Ansible groups
+          # This config will be added to the inventory file
+          ansible.groups = {
+            "vagrant" => ["#{host_suffix}[1:#{nb_swarm_nodes}]"],
+            "vagrant_overrides:children" => ["vagrant"],
+            "dev:children" => ["vagrant"],
+            "dev_overrides:children" => ["vagrant"],
+
+            "docker:children" => ["vagrant"],
+            "docker:vars" => {
+              "dockerswarm_iface" => "eth1",
+              "swarm_dev_ip" => "#{subnet}.11" # first host
+            },
+
+            "dockerswarm_manager" => ["#{host_suffix}[1:#{nb_swarm_managers}]"],
+            "dockerswarm_worker" => ansible_dockerswarm_worker_group
+          }
         end
-
-        # # Addition provisioners are only called if --provision-with is passed
-        # if ARGV.include? '--provision-with'
-        #   worker.vm.provision "consul", type: "ansible" do |ansible|
-        #     ansible.limit = "all"
-        #     ansible.playbook = "ansible/consul.yml"
-        #     ansible.verbose = "vv"
-        #     ansible.groups = ANSIBLE_GROUPS
-        #   end
-
-          # worker.vm.provision "logging", type: "ansible" do |ansible|
-          #   ansible.limit = "all"
-          #   ansible.playbook = "ansible/logging.yml"
-          #   ansible.verbose = "vv"
-          #   ansible.sudo = true
-          #   ansible.groups = ANSIBLE_GROUPS
-          # end
-          #
-          # worker.vm.provision "monitoring", type: "ansible" do |ansible|
-          #   ansible.limit = "all"
-          #   ansible.playbook = "ansible/monitoring.yml"
-          #   ansible.verbose = "vv"
-          #   ansible.sudo = true
-          #   ansible.groups = ANSIBLE_GROUPS
-          # end
-
-          # worker.vm.provision "apps", type: "ansible" do |ansible|
-          #
-          #   # Only need to run against one of the managers since using swarm
-          #   ansible.limit = "managers*"
-          #   ansible.playbook = "ansible/apps.yml"
-          #   ansible.verbose = "vv"
-          #   ansible.groups = ANSIBLE_GROUPS
-          # end
-        # end
-
       end
+
     end
   end
+
 end
