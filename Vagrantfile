@@ -3,8 +3,13 @@
 
 Vagrant.configure("2") do |config|
 
-  config.hostmanager.manage_host = true
-  config.hostmanager.manage_guest = true
+  # configs for vagrant-hostmanager
+  if Vagrant.has_plugin?("HostManager")
+    config.hostmanager.enabled = true
+    config.hostmanager.manage_host = true
+  end
+  # config.hostmanager.manage_host = true
+  # config.hostmanager.manage_guest = true
   config.vm.box = "bento/centos-7.7"
 
   config.vm.define "admin" do |host|
