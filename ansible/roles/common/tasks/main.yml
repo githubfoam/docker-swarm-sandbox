@@ -1,0 +1,13 @@
+#- name: Ansible is installed
+#  yum: name=ansible
+- name: timezone is Asia/Seoul
+  timezone:
+        name: Asia/Seoul
+  tags: [common]
+- name: /etc/hosts is configured
+  lineinfile:
+    dest: /etc/hosts
+    regexp: "^{{ item.host_ip }}"
+    line: "{{ item.host_ip }} {{ item.host_name }}"
+  with_items: "{{ etc_hosts }}"
+  tags: [common]

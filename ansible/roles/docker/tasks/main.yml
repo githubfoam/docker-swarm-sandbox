@@ -1,0 +1,30 @@
+- name: ensure yum-utils is at the latest version
+  yum: name=yum-utils state=latest
+  tags: [docker]
+
+- name: ensure old docker package is removed
+  yum: pkg=docker,docker-common,container-selinux,docker-selinux,docker-engine state=removed
+  tags: [docker]
+
+- name: docker-ce repo
+  get_url:
+    url:  https://download.docker.com/linux/centos/docker-ce.repo
+    dest: /etc/yum.repos.d/docker-ce.repo
+  tags: [docker]
+
+- name: yum cleanup
+  command: yum-complete-transaction --cleanup-only
+  tags: [docker]
+
+- name: ensure docker-ce is installed 
+  yum: name=docker-ce state=present update_cache=yes 
+  tags: [docker]
+
+- name: ensure docker is started and enabled
+  service: name=docker state=started enabled=yes
+  tags: [docker]
+ 
+- name: vagrant user in  docker group
+  user: name=vagrant groups='docker' append=yes
+  tags: [docker]
+

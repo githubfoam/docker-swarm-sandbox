@@ -1,0 +1,65 @@
+---
+
+- name: provision swarm nodes
+  hosts: swarm
+  roles:
+      - role: common  
+      - role: docker   
+
+#- name: provision swarm managers 
+#  hosts: swarm-manager
+#  roles:
+#      - role: docker-compose  
+
+- name: determine swarm status
+  hosts: swarm
+  tags: [swarm-init]
+  tasks:
+        - name: determine swarm status
+          shell: >
+                docker info | egrep '^Swarm: ' | cut -d ' ' -f2
+          register: swarm_status
+
+
+- name: swarm init 
+  gather_facts: no
+  tags: [swarm-init]
+  hosts: manager1
+  tasks:
+        - name: run swarm init
+          command: docker swarm init --advertise-addr {{ansible_ssh_host}}  
+          when: "'active' not in swarm_status.stdout_lines"
+        - name: get swarm manager token
+          shell: >
+                docker swarm join-token -q manager
+          register: swarm_manager_token
+        - name: get swarm worker token
+          shell: >
+                docker swarm join-token -q worker
+          register: swarm_worker_token
+
+- name: swarm manager join 
+  gather_facts: no
+  tags: [swarm-init]
+  hosts: swarm-manager:!manager1
+  vars:
+    token: "{{ hostvars['manager1']['swarm_manager_token']['stdout'] }}"
+  tasks:
+        - name:  manager join 
+          shell: >
+                docker swarm join --advertise-addr={{ ansible_ssh_host }}:2377
+                --token={{ token }} manager1:2377
+          when: "'active' not in swarm_status.stdout_lines"
+
+- name: swarm worker join 
+  gather_facts: no
+  tags: [swarm-init]
+  hosts: swarm-worker
+  vars:
+    token: "{{ hostvars['manager1']['swarm_worker_token']['stdout'] }}"
+  tasks:
+        - name: worker join 
+          shell: >
+                docker swarm join --advertise-addr={{ ansible_ssh_host }}:2377
+                --token={{ token }} manager1:2377
+          when: "'active' not in swarm_status.stdout_lines"
